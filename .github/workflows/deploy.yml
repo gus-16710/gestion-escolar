@@ -1,0 +1,128 @@
+name: deploy
+
+# Each push to master runs the tests and, if they pass, builds the app and copies it to
+# ciccis.unaideamas.com over SSH (cPanel). It can also be launched by hand from GitHub → Actions.
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+# A newer push replaces a deploy that hasn't started yet, so two never copy files at once.
+concurrency:
+  group: deploy-produccion
+  cancel-in-progress: false
+
+env:
+  # The folder of the subdomain; cPanel serves its public/ subfolder.
+  DESTINO: /home4/unaideam/ciccis.unaideamas.com/
+
+jobs:
+  tests:
+    name: Pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      # Feature tests render Inertia pages, which need the Vite manifest.
+      - name: Build assets
+        run: npm run build
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Pest
+        run: ./vendor/bin/pest
+
+  deploy:
+    name: Desplegar
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same PHP as the server (8.3) so vendor/ is compatible.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
+
+      # Composer scripts (package:discover) need an .env; it is never copied to the server.
+      - name: Install PHP dependencies (production)
+        run: |
+          cp .env.example .env
+          composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Sync files (rsync over SSH)
+        uses: easingthemes/ssh-deploy@v5.1.2
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT }}
+          SOURCE: './'
+          TARGET: ${{ env.DESTINO }}
+          ARGS: '-avzr --delete'
+          # Kept on the server, never overwritten or deleted:
+          # - .env and what the app writes (storage/framework, logs, uploaded photos in storage/app/public);
+          # - public/storage is a symlink, so no trailing "/" (with one, rsync --delete removes it);
+          # - public/.well-known is used by cPanel's SSL; public/hot would make pages look for Vite.
+          EXCLUDE: '.git/,.github/,node_modules/,tests/,.env,public/hot,public/storage,public/.well-known/,storage/app/public/,storage/framework/,storage/logs/'
+
+      - name: Run Artisan on the server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ${{ env.DESTINO }}
+            mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache
+            if [ ! -f .env ]; then
+              echo "Falta .env en el servidor: el código ya está copiado; configúralo para terminar la instalación."
+              exit 0
+            fi
+            php artisan migrate --force
+            [ -L public/storage ] || php artisan storage:link
+            php artisan optimize:clear
+            php artisan optimize
+            echo "Despliegue terminado."
