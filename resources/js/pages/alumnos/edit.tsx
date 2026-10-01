@@ -2,11 +2,12 @@ import { AlumnoForm, type AlumnoFormData } from '@/components/alumnos/alumno-for
 import { AsistenciaCompacta, type CursoInscrito } from '@/components/alumnos/cursos-alumno';
 import { type Boleta, BoletaDesplegable } from '@/components/calificaciones/calificacion';
 import { PersonaAvatar } from '@/components/persona-avatar';
+import { BotonesDocumento, type DatosEmision, type InscripcionDocumento } from '@/components/reportes/documentos';
 import { Card } from '@/components/ui/card';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatFecha } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { AlertTriangle, ArrowLeft, KeyRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { FormEventHandler } from 'react';
@@ -32,25 +33,31 @@ interface EditableAlumno {
 }
 
 interface InscripcionAlumno extends CursoInscrito {
-    estado: 'activo' | 'baja' | 'egresado';
+    estado: 'activo' | 'baja' | 'egresado' | 'no_acreditado';
+    promedio_final: number | null;
+    fecha_cierre: string | null;
     fecha_inscripcion: string | null;
     fecha_baja: string | null;
     calificaciones: Boleta;
     puede_ver_calificaciones: boolean;
+    /** Set when the user prints this enrollment's boleta / constancia. */
+    documento: InscripcionDocumento | null;
 }
 
 interface EditAlumnoProps {
     alumno: EditableAlumno;
     inscripciones: InscripcionAlumno[];
+    emision: DatosEmision | null;
 }
 
 const ESTADO_INSCRIPCION: Record<InscripcionAlumno['estado'], string> = {
     activo: 'Inscrito',
     baja: 'Baja',
     egresado: 'Egresado',
+    no_acreditado: 'No acreditado',
 };
 
-export default function EditAlumno({ alumno, inscripciones }: EditAlumnoProps) {
+export default function EditAlumno({ alumno, inscripciones, emision }: EditAlumnoProps) {
     const nombreCompleto = [alumno.nombre, alumno.apellido_paterno, alumno.apellido_materno].filter(Boolean).join(' ');
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -177,7 +184,10 @@ export default function EditAlumno({ alumno, inscripciones }: EditAlumnoProps) {
                                                 ) : (
                                                     <span className="text-muted-foreground">
                                                         {ESTADO_INSCRIPCION[inscripcion.estado]}
-                                                        {inscripcion.fecha_baja && ` el ${formatFecha(inscripcion.fecha_baja)}`}
+                                                        {inscripcion.promedio_final !== null &&
+                                                            ` · promedio ${inscripcion.promedio_final.toFixed(1)}`}
+                                                        {(inscripcion.fecha_baja ?? inscripcion.fecha_cierre) &&
+                                                            ` el ${formatFecha((inscripcion.fecha_baja ?? inscripcion.fecha_cierre)!)}`}
                                                         {inscripcion.asistencia.porcentaje !== null &&
                                                             ` · ${inscripcion.asistencia.porcentaje}% asistencia`}
                                                     </span>
@@ -190,6 +200,15 @@ export default function EditAlumno({ alumno, inscripciones }: EditAlumnoProps) {
                                                 <div className="pt-1 pl-12.5">
                                                     <BoletaDesplegable boleta={inscripcion.calificaciones} />
                                                 </div>
+                                            )}
+                                            {inscripcion.documento && emision && (
+                                                <BotonesDocumento
+                                                    inscripcion={inscripcion.documento}
+                                                    alumno={nombreCompleto}
+                                                    emision={emision}
+                                                    onEmitido={() => router.reload({ only: ['emision'] })}
+                                                    className="pt-1 pl-12.5"
+                                                />
                                             )}
                                         </li>
                                     ))}

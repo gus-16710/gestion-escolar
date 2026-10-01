@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { cn, formatFecha } from '@/lib/utils';
 import { Link } from '@inertiajs/react';
 import { Building2, CalendarDays, Clock, GraduationCap, LoaderCircle, Sparkles, UserRound, Users, type LucideIcon } from 'lucide-react';
-import { FormEventHandler, useMemo, useRef } from 'react';
+import { FormEventHandler, useMemo, useRef, useState } from 'react';
 
 // A type alias (not an interface) so it satisfies Inertia's FormDataType index signature.
 export type GrupoFormData = {
@@ -132,6 +132,10 @@ export function GrupoForm({
     const turnoManual = useRef(data.turno !== '');
 
     // Only the cursos the selected plantel offers.
+    // "Concluido" is set (and undone) only by the closing flow, which records each alumno's result.
+    const [concluido] = useState(data.estado === 'concluido');
+    const estados = Object.keys(ESTADOS_GRUPO).filter((valor) => (concluido ? valor === 'concluido' : valor !== 'concluido'));
+
     const cursosDelPlantel = useMemo(() => (plantel ? cursos.filter((c) => plantel.curso_ids.includes(c.id)) : []), [plantel, cursos]);
 
     // Profesores who already teach the chosen curso go first.
@@ -415,18 +419,23 @@ export function GrupoForm({
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="estado">Estado</Label>
-                            <Select value={data.estado} onValueChange={(value) => setData('estado', value)}>
+                            <Select value={data.estado} onValueChange={(value) => setData('estado', value)} disabled={concluido}>
                                 <SelectTrigger id="estado">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {Object.keys(ESTADOS_GRUPO).map((valor) => (
+                                    {estados.map((valor) => (
                                         <SelectItem key={valor} value={valor}>
                                             <EstadoGrupoBadge estado={valor} />
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {concluido ? (
+                                <p className="text-muted-foreground text-xs">Para cambiarlo, el Admin debe reabrir el grupo.</p>
+                            ) : (
+                                <p className="text-muted-foreground text-xs">Para concluirlo usa «Concluir grupo» en su página.</p>
+                            )}
                             <InputError message={errors.estado} />
                         </div>
                         <div className="grid gap-2 sm:col-span-2">

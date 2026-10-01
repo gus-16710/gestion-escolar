@@ -37,6 +37,8 @@ class Grupo extends Model
         'fecha_fin',
         'cupo',
         'estado',
+        'concluido_en',
+        'concluido_por',
     ];
 
     protected function casts(): array
@@ -45,6 +47,7 @@ class Grupo extends Model
             'fecha_inicio' => 'date',
             'fecha_fin' => 'date',
             'cupo' => 'integer',
+            'concluido_en' => 'datetime',
         ];
     }
 
@@ -109,6 +112,11 @@ class Grupo extends Model
             ->using(Inscripcion::class)
             ->withPivot('id', 'estado', 'fecha_inscripcion', 'fecha_baja')
             ->withTimestamps();
+    }
+
+    public function concluidoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'concluido_por');
     }
 
     public function clasesSuspendidas(): HasMany

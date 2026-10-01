@@ -62,7 +62,7 @@ export interface CursoAnterior {
     curso: string;
     clave: string;
     plantel: string;
-    resultado: 'concluido' | 'baja' | 'cancelado';
+    resultado: 'egresado' | 'no_acreditado' | 'concluido' | 'baja' | 'cancelado';
     fecha: string | null;
     asistencia: number | null;
     promedio: number | null;
@@ -284,6 +284,8 @@ export function HistorialCard({ registros }: { registros: RegistroAsistencia[] }
 }
 
 const RESULTADOS: Record<CursoAnterior['resultado'], string> = {
+    egresado: 'Egresado',
+    no_acreditado: 'No acreditado',
     concluido: 'Concluido',
     baja: 'Baja',
     cancelado: 'Grupo cancelado',
@@ -319,7 +321,12 @@ export function AnterioresCard({ cursos }: { cursos: CursoAnterior[] }) {
                                     <span className="text-muted-foreground text-[10px]">{curso.promedio_completo ? 'promedio' : 'parcial'}</span>
                                 </span>
                             )}
-                            <Badge variant={curso.resultado === 'concluido' ? 'default' : 'secondary'}>{RESULTADOS[curso.resultado]}</Badge>
+                            <Badge
+                                variant={curso.resultado === 'egresado' || curso.resultado === 'concluido' ? 'default' : 'secondary'}
+                                className={cn(curso.resultado === 'no_acreditado' && 'bg-red-500/10 text-red-800 dark:text-red-300')}
+                            >
+                                {RESULTADOS[curso.resultado]}
+                            </Badge>
                         </li>
                     ))}
                 </ul>

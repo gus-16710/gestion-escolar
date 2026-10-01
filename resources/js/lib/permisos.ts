@@ -56,7 +56,7 @@ export const MODULOS_PERMISOS: ModuloPermisos[] = [
     { modulo: 'Cursos', ver: 'view courses', gestionar: 'manage courses' },
     { modulo: 'Planteles', ver: 'view planteles', gestionar: 'manage planteles' },
     { modulo: 'Calificaciones', ver: 'view grades', gestionar: 'manage grades', etiquetaGestionar: 'Registrar' },
-    { modulo: 'Reportes', ver: 'view reports', proximamente: true },
+    { modulo: 'Reportes', ver: 'view reports', nota: 'Boletas, constancias, concentrados y listas de asistencia en PDF' },
     { modulo: 'Usuarios', ver: 'view users', gestionar: 'manage users', nota: 'Por ahora esta sección es solo del rol Admin' },
     { modulo: 'Roles', gestionar: 'manage roles', nota: 'Por ahora esta sección es solo del rol Admin' },
 ];

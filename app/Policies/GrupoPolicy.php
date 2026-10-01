@@ -69,7 +69,7 @@ class GrupoPolicy
 
     /**
      * Attendance is taken by `manage attendance` holders on the grupos they teach (an Admin on
-     * any grupo), never on cancelled ones. A Director who also teaches takes it only in their own
+     * any grupo), never on cancelled or concluded ones. A Director who also teaches takes it only in their own
      * grupos; in the rest of their plantel they can only review it.
      */
     public function takeAttendance(User $user, Grupo $grupo): bool
@@ -78,7 +78,7 @@ class GrupoPolicy
 
         return $user->can('manage attendance')
             && ($sinRestriccion || $this->imparte($user, $grupo))
-            && $grupo->estado !== 'cancelado';
+            && ! in_array($grupo->estado, ['cancelado', 'concluido'], true);
     }
 
     /**
@@ -91,7 +91,7 @@ class GrupoPolicy
 
     /**
      * Grades are recorded like attendance: by `manage grades` holders on the grupos they teach (an Admin on
-     * any grupo), never on cancelled ones. A Director only reviews them.
+     * any grupo), never on cancelled or concluded ones (reopen it to correct). A Director only reviews them.
      */
     public function gradeStudents(User $user, Grupo $grupo): bool
     {
@@ -99,7 +99,23 @@ class GrupoPolicy
 
         return $user->can('manage grades')
             && ($sinRestriccion || $this->imparte($user, $grupo))
-            && $grupo->estado !== 'cancelado';
+            && ! in_array($grupo->estado, ['cancelado', 'concluido'], true);
+    }
+
+    /**
+     * A running grupo is concluded (each alumno ends as egresado or no acreditado) by whoever runs it: the Admin, or the Director of its plantel.
+     */
+    public function close(User $user, Grupo $grupo): bool
+    {
+        return $grupo->estado === 'en_curso' && $this->manages($user, $grupo);
+    }
+
+    /**
+     * Only an unrestricted manager (the Admin) reopens a concluded grupo, to correct it.
+     */
+    public function reopen(User $user, Grupo $grupo): bool
+    {
+        return $grupo->estado === 'concluido' && $user->can('manage groups') && $user->plantelesAlcance() === null;
     }
 
     /**
@@ -107,7 +123,16 @@ class GrupoPolicy
      */
     public function suspendClass(User $user, Grupo $grupo): bool
     {
-        return $grupo->estado !== 'cancelado' && ($this->takeAttendance($user, $grupo) || $this->manages($user, $grupo));
+        return ! in_array($grupo->estado, ['cancelado', 'concluido'], true) && ($this->takeAttendance($user, $grupo) || $this->manages($user, $grupo));
+    }
+
+    /**
+     * Printed reports (concentrado, roll-call sheet, boletas, constancias) are for `view reports` holders
+     * within their plantel reach: the Admin anywhere, a Director in their planteles.
+     */
+    public function report(User $user, Grupo $grupo): bool
+    {
+        return $user->can('view reports') && $user->alcanzaPlantel($grupo->plantel_id);
     }
 
     private function manages(User $user, Grupo $grupo): bool

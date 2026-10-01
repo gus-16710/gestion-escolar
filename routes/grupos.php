@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\CalificacionController;
+use App\Http\Controllers\CierreGrupoController;
 use App\Http\Controllers\ClaseSuspendidaController;
 use App\Http\Controllers\GrupoController;
 use App\Http\Controllers\InscripcionController;
@@ -15,6 +16,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('grupos/{grupo}/asistencias', [AsistenciaController::class, 'edit'])->name('asistencias.edit');
     Route::put('grupos/{grupo}/asistencias', [AsistenciaController::class, 'update'])->name('asistencias.update');
+
+    Route::get('grupos/{grupo}/cierre', [CierreGrupoController::class, 'show'])->name('cierre.show');
+    Route::post('grupos/{grupo}/cierre', [CierreGrupoController::class, 'store'])->name('cierre.store');
+    Route::delete('grupos/{grupo}/cierre', [CierreGrupoController::class, 'destroy'])->name('cierre.destroy');
 
     Route::get('grupos/{grupo}/calificaciones', [CalificacionController::class, 'index'])->name('calificaciones.index');
     Route::get('grupos/{grupo}/calificaciones/{modulo}', [CalificacionController::class, 'edit'])->name('calificaciones.edit');

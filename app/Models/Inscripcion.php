@@ -31,6 +31,8 @@ class Inscripcion extends Pivot
         'fecha_baja',
         'motivo_baja',
         'inscrito_por',
+        'promedio_final',
+        'fecha_cierre',
     ];
 
     protected function casts(): array
@@ -38,6 +40,8 @@ class Inscripcion extends Pivot
         return [
             'fecha_inscripcion' => 'date',
             'fecha_baja' => 'date',
+            'promedio_final' => 'float',
+            'fecha_cierre' => 'date',
         ];
     }
 
@@ -64,6 +68,11 @@ class Inscripcion extends Pivot
     public function asistencias(): HasMany
     {
         return $this->hasMany(Asistencia::class, 'inscripcion_id');
+    }
+
+    public function documentos(): HasMany
+    {
+        return $this->hasMany(DocumentoEmitido::class, 'inscripcion_id');
     }
 
     /**

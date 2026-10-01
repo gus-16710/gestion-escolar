@@ -186,14 +186,17 @@ class ResumenAlumno
                     'plantel' => $inscripcion->grupo->plantel->nombre,
                     'resultado' => match (true) {
                         $inscripcion->estado === 'baja' => 'baja',
-                        $inscripcion->estado === 'egresado', $inscripcion->grupo->estado === 'concluido' => 'concluido',
+                        $inscripcion->estado === 'egresado' => 'egresado',
+                        $inscripcion->estado === 'no_acreditado' => 'no_acreditado',
+                        $inscripcion->grupo->estado === 'concluido' => 'concluido',
                         default => 'cancelado',
                     },
-                    'fecha' => ($inscripcion->fecha_baja ?? $this->fechaFin($inscripcion->grupo))?->format('Y-m-d'),
+                    'fecha' => ($inscripcion->fecha_baja ?? $inscripcion->fecha_cierre ?? $this->fechaFin($inscripcion->grupo))?->format('Y-m-d'),
                     'asistencia' => $this->asistencia($inscripcion)['porcentaje'],
                     // The final average, or the partial one of the modules graded before leaving.
-                    'promedio' => $boleta['promedio_final'] ?? $boleta['promedio_parcial'],
-                    'promedio_completo' => $boleta['promedio_final'] !== null,
+                    // The average frozen at the close, else the final one, else the partial one of the modules graded before leaving.
+                    'promedio' => $inscripcion->promedio_final ?? $boleta['promedio_final'] ?? $boleta['promedio_parcial'],
+                    'promedio_completo' => $inscripcion->promedio_final !== null || $boleta['promedio_final'] !== null,
                 ];
             })
             ->values()

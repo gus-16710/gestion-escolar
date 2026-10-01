@@ -207,6 +207,20 @@ class AlumnoController extends Controller
     {
         $this->authorize('update', $alumno);
 
+        // Every enrollment the user can see, current first, with the alumno's attendance in each.
+        $inscripciones = $alumno->inscripciones()
+            ->whereHas('grupo', fn ($query) => $query->visiblePara($request->user()))
+            ->with('grupo:id,clave,curso_id,plantel_id,estado', 'grupo.curso:id,nombre,clave', 'grupo.curso.modulos', 'grupo.plantel:id,nombre,clave', 'calificaciones')
+            ->withCount([
+                'asistencias as total_registros',
+                'asistencias as faltas' => fn ($query) => $query->where('estado', 'falta'),
+            ])
+            ->orderByRaw("case estado when 'activo' then 0 else 1 end")
+            ->orderByDesc('fecha_inscripcion')
+            ->get();
+
+        $reportables = $inscripciones->filter(fn (Inscripcion $inscripcion) => $request->user()->can('report', $inscripcion->grupo));
+
         return Inertia::render('alumnos/edit', [
             'alumno' => [
                 'id' => $alumno->id,
@@ -229,25 +243,19 @@ class AlumnoController extends Controller
                 'tiene_cuenta' => $alumno->user_id !== null,
                 'registrado' => $alumno->created_at?->format('Y-m-d'),
             ],
-            // Every enrollment the user can see, current first, with the alumno's attendance in each.
-            'inscripciones' => $alumno->inscripciones()
-                ->whereHas('grupo', fn ($query) => $query->visiblePara($request->user()))
-                ->with('grupo:id,clave,curso_id,plantel_id,estado', 'grupo.curso:id,nombre,clave', 'grupo.curso.modulos', 'grupo.plantel:id,nombre,clave', 'calificaciones')
-                ->withCount([
-                    'asistencias as total_registros',
-                    'asistencias as faltas' => fn ($query) => $query->where('estado', 'falta'),
-                ])
-                ->orderByRaw("case estado when 'activo' then 0 else 1 end")
-                ->orderByDesc('fecha_inscripcion')
-                ->get()
-                ->map(fn (Inscripcion $inscripcion) => [
-                    ...$this->resumenInscripcion($inscripcion),
-                    'estado' => $inscripcion->estado,
-                    'fecha_inscripcion' => $inscripcion->fecha_inscripcion?->format('Y-m-d'),
-                    'fecha_baja' => $inscripcion->fecha_baja?->format('Y-m-d'),
-                    'calificaciones' => $this->boleta($inscripcion),
-                    'puede_ver_calificaciones' => $request->user()->can('viewGrades', $inscripcion->grupo),
-                ]),
+            'inscripciones' => $inscripciones->map(fn (Inscripcion $inscripcion) => [
+                ...$this->resumenInscripcion($inscripcion),
+                'estado' => $inscripcion->estado,
+                'fecha_inscripcion' => $inscripcion->fecha_inscripcion?->format('Y-m-d'),
+                'fecha_baja' => $inscripcion->fecha_baja?->format('Y-m-d'),
+                'promedio_final' => $inscripcion->promedio_final,
+                'fecha_cierre' => $inscripcion->fecha_cierre?->format('Y-m-d'),
+                'calificaciones' => $this->boleta($inscripcion),
+                'puede_ver_calificaciones' => $request->user()->can('viewGrades', $inscripcion->grupo),
+                // Boleta / constancia, for whoever prints reports at its plantel.
+                'documento' => $reportables->contains($inscripcion) ? ReporteController::inscripcionParaDocumento($inscripcion) : null,
+            ]),
+            'emision' => $reportables->isEmpty() ? null : ReporteController::datosEmision($reportables->map(fn (Inscripcion $inscripcion) => $inscripcion->grupo->plantel_id)->all()),
         ]);
     }
 

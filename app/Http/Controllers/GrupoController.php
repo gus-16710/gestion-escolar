@@ -14,6 +14,7 @@ use App\Models\Profesor;
 use App\Models\User;
 use App\Support\CalendarioGrupo;
 use App\Support\Dashboard\ResumenEscolar;
+use App\Support\Reportes\DatosReporte;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -118,14 +119,14 @@ class GrupoController extends Controller
     {
         $this->authorize('view', $grupo);
 
-        $grupo->load(['plantel:id,nombre', 'curso:id,nombre,clave,duracion_semanas', 'curso.modulos', 'profesor', 'inscripciones' => fn ($query) => $query
+        $grupo->load(['plantel:id,nombre', 'curso:id,nombre,clave,duracion_semanas', 'curso.modulos', 'profesor', 'concluidoPor:id,name', 'inscripciones' => fn ($query) => $query
             ->with(['alumno' => fn ($query) => $query->withTrashed(), 'inscritoPor:id,name', 'calificaciones'])
             ->withCount([
                 'asistencias as registros',
                 'asistencias as faltas' => fn ($query) => $query->where('estado', 'falta'),
                 'asistencias as retardos' => fn ($query) => $query->where('estado', 'retardo'),
             ])
-            ->orderByRaw("case estado when 'activo' then 0 when 'egresado' then 1 else 2 end"),
+            ->orderByRaw("case estado when 'activo' then 0 when 'egresado' then 1 when 'no_acreditado' then 2 else 3 end"),
         ]);
 
         $inscritosActivos = $grupo->inscripciones->where('estado', 'activo');
@@ -137,6 +138,9 @@ class GrupoController extends Controller
         $faltas30 = (clone $ultimos30)->where('asistencias.estado', 'falta')->count();
         $ultimaLista = $grupo->asistencias()->max('asistencias.fecha');
         $calendario = new CalendarioGrupo($grupo);
+        $promediosFinales = $grupo->inscripciones->pluck('promedio_final')->filter(fn ($promedio) => $promedio !== null);
+        // Printable reports: the grade sheet and the roll-call sheet of each month of its calendar.
+        $mesesReporte = $request->user()->can('report', $grupo) ? DatosReporte::meses($grupo, $calendario) : null;
 
         return Inertia::render('grupos/show', [
             'grupo' => [
@@ -168,6 +172,13 @@ class GrupoController extends Controller
                 'admite_inscripciones' => $grupo->admiteInscripciones(),
                 'curso_id' => $grupo->curso_id,
             ],
+            'cierre' => $grupo->estado === 'concluido' ? [
+                'concluido_en' => $grupo->concluido_en?->format('Y-m-d'),
+                'concluido_por' => $grupo->concluidoPor?->name,
+                'egresados' => $grupo->inscripciones->where('estado', 'egresado')->count(),
+                'no_acreditados' => $grupo->inscripciones->where('estado', 'no_acreditado')->count(),
+                'promedio' => $promediosFinales->isEmpty() ? null : round($promediosFinales->avg(), 1),
+            ] : null,
             'modulos' => $this->conCalificaciones($calendario->modulos($grupo->curso->modulos), $inscritosActivos),
             'clasesSinImpartir' => $calendario->clasesSinImpartir(),
             'motivosSuspension' => ClaseSuspendida::MOTIVOS,
@@ -183,6 +194,7 @@ class GrupoController extends Controller
                 'fecha_inscripcion' => $inscripcion->fecha_inscripcion->format('Y-m-d'),
                 'fecha_baja' => $inscripcion->fecha_baja?->format('Y-m-d'),
                 'motivo_baja' => $inscripcion->motivo_baja,
+                'promedio_final' => $inscripcion->promedio_final,
                 'inscrito_por' => $inscripcion->inscritoPor?->name,
                 'asistencia' => [
                     'porcentaje' => Asistencia::porcentaje($inscripcion->registros, $inscripcion->faltas),
@@ -211,6 +223,9 @@ class GrupoController extends Controller
             'canTakeAttendance' => $request->user()->can('takeAttendance', $grupo),
             'canSuspend' => $request->user()->can('suspendClass', $grupo),
             'canViewGrades' => $request->user()->can('viewGrades', $grupo),
+            'canClose' => $request->user()->can('close', $grupo),
+            'canReopen' => $request->user()->can('reopen', $grupo),
+            'reportes' => $mesesReporte === null ? null : ['meses' => $mesesReporte, 'mes_sugerido' => DatosReporte::mesSugerido($mesesReporte)],
         ]);
     }
 
@@ -385,6 +400,13 @@ class GrupoController extends Controller
         if (! Plantel::find($validated['plantel_id'])->cursos()->whereKey($validated['curso_id'])->exists()) {
             throw ValidationException::withMessages([
                 'curso_id' => 'Este curso no se ofrece en el plantel seleccionado. Agrégalo a la oferta del plantel primero.',
+            ]);
+        }
+
+        // Concluding and reopening go through their own flow (CierreGrupoController), which sets each alumno's result.
+        if ($validated['estado'] !== ($grupo?->estado ?? 'planeado') && in_array('concluido', [$validated['estado'], $grupo?->estado], true)) {
+            throw ValidationException::withMessages([
+                'estado' => 'Para concluir el grupo usa «Concluir grupo»; para reabrirlo, «Reabrir grupo».',
             ]);
         }
 

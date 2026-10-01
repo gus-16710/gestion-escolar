@@ -40,7 +40,7 @@ interface AlumnoCaptura {
 }
 
 interface CapturarProps {
-    grupo: { id: number; clave: string; curso: string; fecha_inicio: string };
+    grupo: { id: number; clave: string; curso: string; fecha_inicio: string; estado: string };
     modulo: {
         id: number;
         orden: number;
@@ -253,7 +253,9 @@ export default function Capturar({ grupo, modulo, modulos, alumnos, fecha, hoy, 
                 {modulo.estado !== 'proximo' && !puedeCalificarGrupo && (
                     <p className="bg-muted text-muted-foreground flex items-start gap-2 rounded-lg px-4 py-3 text-sm">
                         <Info className="mt-0.5 size-4 shrink-0" />
-                        Solo consulta: las calificaciones las registra el profesor del grupo.
+                        {grupo.estado === 'concluido'
+                            ? 'El grupo está concluido: sus calificaciones ya no se modifican. Para corregir, la administración debe reabrirlo.'
+                            : 'Solo consulta: las calificaciones las registra el profesor del grupo.'}
                     </p>
                 )}
 

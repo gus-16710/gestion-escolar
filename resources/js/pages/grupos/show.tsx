@@ -1,3 +1,4 @@
+import { colorCalificacion, formatCalificacion } from '@/components/calificaciones/calificacion';
 import { UMBRAL_RIESGO } from '@/components/dashboard/bloques';
 import { haceDias, OcupacionBar } from '@/components/dashboard/grupos-en-curso';
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog';
@@ -7,6 +8,7 @@ import { describirDiasYHoras, EstadoGrupoBadge, TURNOS } from '@/components/grup
 import { InscribirAlumno, type AlumnoDisponible } from '@/components/grupos/inscribir-alumno';
 import { moduloActual, PlanEstudiosGrupo, type ModuloCalendario } from '@/components/grupos/plan-estudios-grupo';
 import { PersonaAvatar } from '@/components/persona-avatar';
+import { ReportesGrupoMenu, type MesReporte } from '@/components/reportes/documentos';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -18,15 +20,18 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertTriangle,
+    Award,
     Building2,
     CalendarClock,
     CalendarDays,
     ChevronDown,
     ClipboardCheck,
     Clock,
+    Flag,
     Gauge,
     GraduationCap,
     Pencil,
+    RotateCcw,
     Search,
     TrendingUp,
     UserPlus,
@@ -80,7 +85,8 @@ interface InscripcionRow {
     nombre_completo: string;
     foto_url: string | null;
     telefono: string | null;
-    estado: 'activo' | 'baja' | 'egresado';
+    estado: 'activo' | 'baja' | 'egresado' | 'no_acreditado';
+    promedio_final: number | null;
     fecha_inscripcion: string;
     fecha_baja: string | null;
     motivo_baja: string | null;
@@ -102,6 +108,19 @@ interface GrupoShowProps {
     canTakeAttendance: boolean;
     canSuspend: boolean;
     canViewGrades: boolean;
+    canClose: boolean;
+    canReopen: boolean;
+    cierre: Cierre | null;
+    reportes: { meses: MesReporte[]; mes_sugerido: string | null } | null;
+}
+
+/** The grupo's close (CierreGrupoController): when, by whom and how its alumnos ended. */
+interface Cierre {
+    concluido_en: string | null;
+    concluido_por: string | null;
+    egresados: number;
+    no_acreditados: number;
+    promedio: number | null;
 }
 
 /** Same rule as the dashboards: below the threshold with at least 3 roll calls. */
@@ -139,6 +158,10 @@ export default function GrupoShow({
     canTakeAttendance,
     canSuspend,
     canViewGrades,
+    canClose,
+    canReopen,
+    cierre,
+    reportes,
 }: GrupoShowProps) {
     const [error, setError] = useState<string | null>(null);
     const [busqueda, setBusqueda] = useState('');
@@ -162,6 +185,13 @@ export default function GrupoShow({
             ? activos.filter((i) => i.nombre_completo.toLowerCase().includes(termino) || i.matricula.toLowerCase().includes(termino))
             : activos;
     }, [activos, busqueda]);
+
+    const reabrir = () => {
+        if (!confirm('¿Reabrir el grupo? Volverá a estar en curso y sus alumnos regresarán a inscritos, para poder corregir sus calificaciones.'))
+            return;
+
+        router.delete(route('cierre.destroy', grupo.id), { preserveScroll: true });
+    };
 
     const handleDelete = () => {
         setError(null);
@@ -220,6 +250,29 @@ export default function GrupoShow({
                                     <GraduationCap className="size-4" />
                                     Calificaciones
                                 </Link>
+                            </Button>
+                        )}
+                        {reportes && (
+                            <ReportesGrupoMenu
+                                grupoId={grupo.id}
+                                grupoClave={grupo.clave}
+                                meses={reportes.meses}
+                                mesSugerido={reportes.mes_sugerido}
+                                className="flex-1 sm:flex-none"
+                            />
+                        )}
+                        {canClose && (
+                            <Button variant="outline" asChild className="flex-1 sm:flex-none">
+                                <Link href={route('cierre.show', grupo.id)}>
+                                    <Flag className="size-4" />
+                                    Concluir grupo
+                                </Link>
+                            </Button>
+                        )}
+                        {canReopen && (
+                            <Button variant="outline" className="flex-1 sm:flex-none" onClick={reabrir}>
+                                <RotateCcw className="size-4" />
+                                Reabrir grupo
                             </Button>
                         )}
                         {canManage && (
@@ -332,7 +385,7 @@ export default function GrupoShow({
                                 <h2 className="font-semibold">Alumnos</h2>
                                 <p className="text-muted-foreground text-sm">
                                     {grupo.inscritos} {grupo.inscritos === 1 ? 'inscrito' : 'inscritos'}
-                                    {inactivos.length > 0 && ` · ${inactivos.length} con baja o egresados`}
+                                    {inactivos.length > 0 && ` · ${inactivos.length} con resultado o baja`}
                                 </p>
                             </div>
                             {canEnroll &&
@@ -384,7 +437,9 @@ export default function GrupoShow({
                             </div>
                         )}
 
-                        {activos.length === 0 ? (
+                        {activos.length === 0 && cierre ? (
+                            <p className="text-muted-foreground px-5 py-4 text-sm">El grupo concluyó: este es el resultado de cada alumno.</p>
+                        ) : activos.length === 0 ? (
                             <div className="flex flex-col items-center px-6 py-12 text-center">
                                 <div className="bg-muted text-muted-foreground mb-3 flex size-11 items-center justify-center rounded-full">
                                     <Users className="size-5" />
@@ -425,9 +480,9 @@ export default function GrupoShow({
                         )}
 
                         {inactivos.length > 0 && (
-                            <Collapsible className="border-t">
+                            <Collapsible className="border-t" defaultOpen={cierre !== null}>
                                 <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground flex w-full items-center justify-between px-5 py-3 text-sm font-medium transition-colors">
-                                    Bajas y egresados ({inactivos.length})
+                                    Resultados y bajas ({inactivos.length})
                                     <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
                                 </CollapsibleTrigger>
                                 <CollapsibleContent>
@@ -437,7 +492,7 @@ export default function GrupoShow({
                                                 <PersonaAvatar
                                                     nombre={inscripcion.nombre_completo}
                                                     fotoUrl={inscripcion.foto_url}
-                                                    className="opacity-60 grayscale"
+                                                    className={cn(inscripcion.estado === 'baja' && 'opacity-60 grayscale')}
                                                 />
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-sm font-medium">{inscripcion.nombre_completo}</p>
@@ -447,9 +502,7 @@ export default function GrupoShow({
                                                     </p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs font-medium">
-                                                        {inscripcion.estado === 'egresado' ? 'Egresado' : 'Baja'}
-                                                    </span>
+                                                    <ResultadoInscripcion inscripcion={inscripcion} />
                                                     {inscripcion.fecha_baja && (
                                                         <p className="text-muted-foreground mt-1 text-xs">{formatFecha(inscripcion.fecha_baja)}</p>
                                                     )}
@@ -464,6 +517,8 @@ export default function GrupoShow({
 
                     {/* Details and study plan */}
                     <div className="flex flex-col gap-6">
+                        {cierre && <ResultadosCard cierre={cierre} />}
+
                         <Card className="gap-0 p-0">
                             <div className="border-b px-5 py-4">
                                 <h2 className="font-semibold">Detalles</h2>
@@ -537,6 +592,65 @@ export default function GrupoShow({
             </motion.div>
         </AppLayout>
     );
+}
+
+/** How a concluded grupo ended: egresados, no acreditados and the group average. */
+function ResultadosCard({ cierre }: { cierre: Cierre }) {
+    return (
+        <Card className="gap-0 p-0">
+            <div className="border-b px-5 py-4">
+                <h2 className="flex items-center gap-2 font-semibold">
+                    <Award className="text-muted-foreground size-4" />
+                    Resultados
+                </h2>
+                {cierre.concluido_en && (
+                    <p className="text-muted-foreground text-sm">
+                        Concluido el {formatFecha(cierre.concluido_en)}
+                        {cierre.concluido_por && ` por ${cierre.concluido_por}`}
+                    </p>
+                )}
+            </div>
+            <dl className="grid grid-cols-3 divide-x text-center">
+                <div className="px-2 py-4">
+                    <dt className="text-muted-foreground text-xs">Egresados</dt>
+                    <dd className="text-xl font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">{cierre.egresados}</dd>
+                </div>
+                <div className="px-2 py-4">
+                    <dt className="text-muted-foreground text-xs">No acreditados</dt>
+                    <dd className={cn('text-xl font-semibold tabular-nums', cierre.no_acreditados > 0 && 'text-destructive')}>
+                        {cierre.no_acreditados}
+                    </dd>
+                </div>
+                <div className="px-2 py-4">
+                    <dt className="text-muted-foreground text-xs">Promedio</dt>
+                    <dd className={cn('text-xl font-semibold tabular-nums', colorCalificacion(cierre.promedio))}>
+                        {formatCalificacion(cierre.promedio)}
+                    </dd>
+                </div>
+            </dl>
+        </Card>
+    );
+}
+
+/** The badge of an enrollment that is no longer active: its result with the frozen average, or the drop. */
+function ResultadoInscripcion({ inscripcion }: { inscripcion: InscripcionRow }) {
+    if (inscripcion.estado === 'egresado' || inscripcion.estado === 'no_acreditado') {
+        const egresado = inscripcion.estado === 'egresado';
+
+        return (
+            <span
+                className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+                    egresado ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300' : 'bg-red-500/10 text-red-800 dark:text-red-300',
+                )}
+            >
+                {egresado ? 'Egresado' : 'No acreditado'}
+                {inscripcion.promedio_final !== null && ` · ${formatCalificacion(inscripcion.promedio_final)}`}
+            </span>
+        );
+    }
+
+    return <span className="bg-muted text-muted-foreground rounded-full border px-2 py-0.5 text-xs font-medium">Baja</span>;
 }
 
 function Indicador({ icono: Icono, titulo, alerta = false, children }: { icono: LucideIcon; titulo: string; alerta?: boolean; children: ReactNode }) {

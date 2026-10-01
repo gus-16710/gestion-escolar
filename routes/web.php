@@ -19,3 +19,4 @@ require __DIR__.'/profesores.php';
 require __DIR__.'/alumnos.php';
 require __DIR__.'/grupos.php';
 require __DIR__.'/calendario.php';
+require __DIR__.'/reportes.php';
