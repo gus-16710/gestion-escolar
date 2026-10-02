@@ -103,4 +103,21 @@ class User extends Authenticatable
     {
         return $this->hasOne(Alumno::class);
     }
+
+    /**
+     * The person record behind the account (director, profesor or alumno), if any.
+     */
+    public function ficha(): Director|Profesor|Alumno|null
+    {
+        return $this->director ?? $this->profesor ?? $this->alumno;
+    }
+
+    /**
+     * A director's, profesor's or alumno's account takes its name and email from their record, so it is
+     * changed there (the record keeps both in sync); administrators always manage their own account.
+     */
+    public function seAdministraDesdeFicha(): bool
+    {
+        return ! $this->hasRole('Admin') && $this->ficha() !== null;
+    }
 }

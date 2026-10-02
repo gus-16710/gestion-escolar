@@ -1,10 +1,11 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 
-// No public landing page: send everyone to the dashboard (guests are bounced to login by `auth`).
-Route::redirect('/', '/dashboard')->name('home');
+// The public site: the academic offer, upcoming openings and the planteles. Signed-in users get a link to their panel.
+Route::get('/', WelcomeController::class)->name('home');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');

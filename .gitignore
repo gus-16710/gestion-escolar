@@ -23,3 +23,6 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+
+# Original images of the public site (kept locally; only the processed ones are published)
+/public/images/sitio/originales

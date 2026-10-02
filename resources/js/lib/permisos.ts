@@ -97,6 +97,9 @@ export function etiquetaNivel(modulo: ModuloPermisos, nivel: NivelPermiso): stri
     return nivel === 'gestionar' ? (modulo.etiquetaGestionar ?? 'Gestionar') : nivel === 'ver' ? 'Ver' : 'Sin acceso';
 }
 
+/** How each system role is named to people; custom roles show as named. */
+export const ETIQUETA_ROLES: Record<string, string> = { Admin: 'Administrador', Director: 'Dirección', Profesor: 'Profesor', Alumno: 'Alumno' };
+
 /** What each system role is for, shown on the role cards and forms. */
 export const DESCRIPCION_ROLES: Record<string, string> = {
     Admin: 'Control total: catálogo, planteles, personal, cuentas y roles.',

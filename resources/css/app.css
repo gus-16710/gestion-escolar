@@ -160,4 +160,11 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /* Section links of the public site glide to their target, unless the user prefers less motion. */
+    @media (prefers-reduced-motion: no-preference) {
+        html {
+            scroll-behavior: smooth;
+        }
+    }
 }

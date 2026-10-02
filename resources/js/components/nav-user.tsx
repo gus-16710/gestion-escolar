@@ -3,17 +3,16 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/c
 import { UserInfo } from '@/components/user-info';
 import { UserMenuContent } from '@/components/user-menu-content';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { ETIQUETA_ROLES } from '@/lib/permisos';
 import { type SharedData } from '@/types';
 import { usePage } from '@inertiajs/react';
 import { ChevronsUpDown } from 'lucide-react';
-
-const ROLES: Record<string, string> = { Admin: 'Administrador', Director: 'Dirección', Profesor: 'Profesor', Alumno: 'Alumno' };
 
 /** The account's main role, in the same order the dashboard picks it; custom roles show as named. */
 function rolVisible(roles: string[]): string | undefined {
     const principal = ['Admin', 'Director', 'Profesor', 'Alumno'].find((rol) => roles.includes(rol)) ?? roles[0];
 
-    return principal ? (ROLES[principal] ?? principal) : undefined;
+    return principal ? (ETIQUETA_ROLES[principal] ?? principal) : undefined;
 }
 
 export function NavUser() {
