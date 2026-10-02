@@ -90,39 +90,62 @@ jobs:
           cp .env.example .env
           composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Sync files (rsync over SSH)
-        uses: easingthemes/ssh-deploy@v5.1.2
-        with:
+      # The host's firewall sometimes resets SSH connections coming from GitHub's runners, so every
+      # connection is retried with growing pauses instead of failing at the first reset.
+      - name: Configure SSH
+        env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          REMOTE_HOST: ${{ secrets.SSH_HOST }}
-          REMOTE_USER: ${{ secrets.SSH_USER }}
-          REMOTE_PORT: ${{ secrets.SSH_PORT }}
-          SOURCE: './'
-          TARGET: ${{ env.DESTINO }}
-          ARGS: '-avzr --delete'
-          # Kept on the server, never overwritten or deleted:
-          # - .env and what the app writes (storage/framework, logs, uploaded photos in storage/app/public);
-          # - public/storage is a symlink, so no trailing "/" (with one, rsync --delete removes it);
-          # - public/.well-known is used by cPanel's SSL; public/hot would make pages look for Vite.
-          EXCLUDE: '.git/,.github/,node_modules/,tests/,.env,public/hot,public/storage,public/.well-known/,storage/app/public/,storage/framework/,storage/logs/'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/reintentar.sh <<'SCRIPT'
+          # Runs the given command up to 6 times, waiting 15, 30, 45... seconds between attempts.
+          for intento in 1 2 3 4 5 6; do
+            "$@" && exit 0
+            echo "::warning::Intento $intento falló (el servidor cortó la conexión); se reintenta en $((intento * 15)) s."
+            sleep $((intento * 15))
+          done
+          echo "::error::No se pudo conectar al servidor después de 6 intentos."
+          exit 1
+          SCRIPT
+          chmod +x ~/reintentar.sh
+
+      - name: Sync files (rsync over SSH)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        # Kept on the server, never overwritten or deleted:
+        # - .env and what the app writes (storage/framework, logs, uploaded photos in storage/app/public);
+        # - public/storage is a symlink, so no trailing "/" (with one, rsync --delete removes it);
+        # - public/.well-known is used by cPanel's SSL; public/hot would make pages look for Vite.
+        run: |
+          ~/reintentar.sh rsync -az --delete --stats \
+            -e "ssh -p $SSH_PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15" \
+            --exclude=.git/ --exclude=.github/ --exclude=node_modules/ --exclude=tests/ --exclude=.env \
+            --exclude=public/hot --exclude=public/storage --exclude=public/.well-known/ \
+            --exclude=storage/app/public/ --exclude=storage/framework/ --exclude=storage/logs/ \
+            ./ "$SSH_USER@$SSH_HOST:$DESTINO"
 
       - name: Run Artisan on the server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            cd ${{ env.DESTINO }}
-            mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache
-            if [ ! -f .env ]; then
-              echo "Falta .env en el servidor: el código ya está copiado; configúralo para terminar la instalación."
-              exit 0
-            fi
-            php artisan migrate --force
-            [ -L public/storage ] || php artisan storage:link
-            php artisan optimize:clear
-            php artisan optimize
-            echo "Despliegue terminado."
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          cat > remoto.sh <<SCRIPT
+          set -e
+          cd $DESTINO
+          mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs storage/app/public bootstrap/cache
+          if [ ! -f .env ]; then
+            echo "Falta .env en el servidor: el código ya está copiado; configúralo para terminar la instalación."
+            exit 0
+          fi
+          php artisan migrate --force
+          [ -L public/storage ] || php artisan storage:link
+          php artisan optimize:clear
+          php artisan optimize
+          echo "Despliegue terminado."
+          SCRIPT
+          ~/reintentar.sh sh -c "ssh -p $SSH_PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 $SSH_USER@$SSH_HOST 'bash -s' < remoto.sh"
