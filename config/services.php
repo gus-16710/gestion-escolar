@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Cloudflare Turnstile ("no soy un robot") on the login. Off while either key is empty (tests, a new install).
+    'turnstile' => [
+        'site_key' => env('TURNSTILE_SITE_KEY'),
+        'secret_key' => env('TURNSTILE_SECRET_KEY'),
+    ],
+
 ];
